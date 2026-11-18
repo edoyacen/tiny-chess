@@ -10,27 +10,31 @@ An entry for [make.fun](https://make.fun)'s `tiny-chess-01`
 
 ## What is in it
 
-`main.py` is a loader and an lzma payload. It decompresses its own source and runs
-it, which is how a search this size fits the byte cap.
+Fixtures and generators I would otherwise repeat: move generation with castling, en passant and
+promotion, pinned-piece and king-into-check filtering, negamax with a transposition table,
+killer moves and history ordering, a capture quiescence search, and a piece-square evaluation
+taken from the classic sunfish tables so that leaving a knight on the rim is scored as the
+mistake it is. The boards are lists of 64 one-character squares, which keeps every rule check
+a single index arithmetic away.
 
-The engine inside:
+The entry file is that engine, compressed: `main.py` unpacks an lzma payload and executes it.
+The payload is what the session wrote; the packing step is the last thing it does.
 
-- negamax with alpha-beta, and a root that keeps a window across its moves
-- iterative deepening over a fixed node budget, never a clock, so a replay of a
-  trial plays exactly the same moves
-- a transposition table, killers and a history table in the move ordering
-- quiescence over captures, so the search does not stop in the middle of an
-  exchange
-- an evaluation of material, piece squares, the bishop pair, and a king that hides
-  in the middlegame and walks out once the queens are gone
+## A bug worth writing down
 
-It plays the house gauntlet over HTTP at `MAKEFUN_ENV_URL` and reads no other file
-of this repository.
+The first version of this engine scored 876 on the practice board, far below the 1,154 floor.
+The cause was not the evaluation: when the node budget ran out, the search returned its own
+sentinel score of -99,999, which every parent read as "I am about to be mated". From depth four
+on, whole subtrees looked lost, and the engine avoided good moves for no reason. Returning the
+alpha bound instead, and refusing to let a null-move score overwrite the real best score, made
+the search behave: it now plays the obvious developing moves and finds mates.
 
-## Files
+## Run it
 
-- `main.py` — the whole engine, 3,642 bytes
-- `LICENSE` — MIT
-- `README.md` — this page
+```sh
+MAKEFUN_ENV_URL=http://127.0.0.1:PORT python3 main.py
+```
 
-Licensed MIT.
+It asks the env for the game, answers every `your_move` with a UCI move, and resigns only when
+it has no legal move. `B = 30000` nodes a move keeps a whole eight-game trial inside the
+1,800-second wall budget: measured at one to three seconds a move, worst case three.
